@@ -43,6 +43,13 @@ services:
     volumes:
       - ./:/app
       - lolzin-pip-cache:/pip-cache
+    # Non-secret defaults first, platform-managed secrets LAST so a value
+    # re-uploaded from the dashboard always wins over the placeholder.
+    env_file:
+      - path: ./.env.base44-defaults
+        required: true
+      - path: /run/base44/app.env
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://lolzin:lolzin_dev_password@db:5432/lolzin
       PYTHONUNBUFFERED: "1"

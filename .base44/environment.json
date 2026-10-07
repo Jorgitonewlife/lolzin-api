@@ -2,5 +2,16 @@
   "previewPort": 3000,
   "healthPath": "/health",
   "startCommand": "docker compose -f docker-compose.base44.yml up -d",
-  "secrets": []
+  "secrets": [
+    {
+      "name": "RIOT_API_KEY",
+      "description": "Riot Games API key from https://developer.riotgames.com. Development keys expire after 24 hours, so a fresh one is needed daily until the app is approved for a production key.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "RIOT_ID",
+      "description": "Your Riot ID in the form GameName#TAG, for example ShadowFox#BR1. Used to find which matches to pull.",
+      "requiredAtBoot": false
+    }
+  ]
 }

@@ -1,8 +1,13 @@
-"""Create the schema and load demo League of Legends data.
+"""Create the schema and load demo data.
 
 Run as a one-shot compose service before the API starts:
     python -m app.seed
+
+Matches carry a `played_at` date and the items that were built, so the
+performance views have something to show before any Riot sync happens.
 """
+
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -39,22 +44,28 @@ ITEMS = [
     ("Redemption", "Support", 2300, "Area heal and shield for the whole team."),
 ]
 
-# (champion name, player, kills, deaths, assists, duration, victory)
+# (champion, player, kills, deaths, assists, duration, victory, days_ago, [items built])
 MATCHES = [
-    ("Ahri", "ShadowFox", 12, 3, 9, 32, True),
-    ("Yasuo", "IronWolf", 7, 8, 4, 28, False),
-    ("Lee Sin", "RiverGhost", 4, 5, 18, 35, True),
-    ("Jinx", "NeonCrow", 15, 6, 7, 41, True),
-    ("Thresh", "Lumen", 1, 7, 24, 38, True),
-    ("Darius", "StoneOx", 9, 4, 5, 30, False),
-    ("Lux", "AuroraVeil", 11, 2, 12, 27, True),
-    ("Ezreal", "QuietStorm", 6, 6, 3, 26, False),
-    ("Vi", "Bramble", 5, 4, 16, 33, True),
-    ("Akali", "NightReed", 13, 5, 2, 29, True),
-    ("Ashe", "FrostPetals", 8, 7, 11, 36, False),
-    ("Garen", "CopperLion", 3, 6, 8, 31, False),
-    ("Nautilus", "DeepAnchor", 2, 9, 21, 39, True),
-    ("Aatrox", "AshenKing", 10, 8, 6, 34, True),
+    ("Ahri", "ShadowFox", 12, 3, 9, 32, True, 3,
+     ["Luden's Companion", "Rabadon's Deathcap", "Zhonya's Hourglass"]),
+    ("Yasuo", "IronWolf", 7, 8, 4, 28, False, 5, ["Infinity Edge", "Kraken Slayer"]),
+    ("Lee Sin", "RiverGhost", 4, 5, 18, 35, True, 6, ["Thornmail", "Guardian Angel"]),
+    ("Jinx", "NeonCrow", 15, 6, 7, 41, True, 9,
+     ["Infinity Edge", "Kraken Slayer", "Bloodthirster"]),
+    ("Thresh", "Lumen", 1, 7, 24, 38, True, 11, ["Redemption", "Thornmail"]),
+    ("Darius", "StoneOx", 9, 4, 5, 30, False, 14, ["Trinity Force", "Thornmail"]),
+    ("Lux", "AuroraVeil", 11, 2, 12, 27, True, 16,
+     ["Luden's Companion", "Rabadon's Deathcap"]),
+    ("Ezreal", "QuietStorm", 6, 6, 3, 26, False, 19, ["Trinity Force", "Kraken Slayer"]),
+    ("Vi", "Bramble", 5, 4, 16, 33, True, 21, ["Trinity Force", "Guardian Angel"]),
+    ("Akali", "NightReed", 13, 5, 2, 29, True, 24,
+     ["Rabadon's Deathcap", "Zhonya's Hourglass"]),
+    ("Ashe", "FrostPetals", 8, 7, 11, 36, False, 28, ["Infinity Edge", "Bloodthirster"]),
+    ("Garen", "CopperLion", 3, 6, 8, 31, False, 31,
+     ["Trinity Force", "Thornmail", "Guardian Angel"]),
+    ("Nautilus", "DeepAnchor", 2, 9, 21, 39, True, 35, ["Thornmail", "Redemption"]),
+    ("Aatrox", "AshenKing", 10, 8, 6, 34, True, 40,
+     ["Trinity Force", "Bloodthirster", "Guardian Angel"]),
 ]
 
 
@@ -67,38 +78,51 @@ def seed() -> None:
             print("Database already seeded — nothing to do.")
             return
 
-        db.add_all([Champion(
-            name=name,
-            title=title,
-            role=role,
-            region=region,
-            difficulty=difficulty,
-            release_year=release_year,
-        ) for name, title, role, region, difficulty, release_year in CHAMPIONS])
-
-        db.add_all([Item(
-            name=name,
-            category=category,
-            cost=cost,
-            description=description,
-        ) for name, category, cost, description in ITEMS])
-
+        db.add_all([
+            Champion(
+                name=name,
+                title=title,
+                role=role,
+                region=region,
+                difficulty=difficulty,
+                release_year=release_year,
+            )
+            for name, title, role, region, difficulty, release_year in CHAMPIONS
+        ])
+        db.add_all([
+            Item(name=name, category=category, cost=cost, description=description)
+            for name, category, cost, description in ITEMS
+        ])
         db.flush()
 
-        champion_ids = {
-            name: champion_id
-            for name, champion_id in db.execute(select(Champion.name, Champion.id))
-        }
+        champions = {c.name: c for c in db.scalars(select(Champion)).all()}
+        items = {i.name: i for i in db.scalars(select(Item)).all()}
+        now = datetime.now(timezone.utc)
 
-        db.add_all([Match(
-            champion_id=champion_ids[champion_name],
-            player=player,
-            kills=kills,
-            deaths=deaths,
-            assists=assists,
-            duration_minutes=duration,
-            victory=victory,
-        ) for champion_name, player, kills, deaths, assists, duration, victory in MATCHES])
+        for (
+            champion_name,
+            player,
+            kills,
+            deaths,
+            assists,
+            duration,
+            victory,
+            days_ago,
+            item_names,
+        ) in MATCHES:
+            match = Match(
+                champion_id=champions[champion_name].id,
+                player=player,
+                kills=kills,
+                deaths=deaths,
+                assists=assists,
+                duration_minutes=duration,
+                victory=victory,
+                played_at=now - timedelta(days=days_ago),
+                source="demo",
+            )
+            match.items.extend(items[name] for name in item_names)
+            db.add(match)
 
         db.commit()
 
