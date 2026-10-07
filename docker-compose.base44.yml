@@ -1,0 +1,88 @@
+# Development environment for lolzin-api.
+# The app runs FROM THE CLONED SOURCE (repo bind-mounted) with uvicorn --reload,
+# so edits appear without rebuilding anything. Only PostgreSQL uses a prebuilt image.
+name: lolzin-api
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: on-failure
+    environment:
+      POSTGRES_USER: lolzin
+      POSTGRES_PASSWORD: lolzin_dev_password
+      POSTGRES_DB: lolzin
+    volumes:
+      - lolzin-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lolzin -d lolzin"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  # One-shot: creates the schema and loads demo data, then exits.
+  seed:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - lolzin-pip-cache:/pip-cache
+    environment:
+      DATABASE_URL: postgresql+psycopg://lolzin:lolzin_dev_password@db:5432/lolzin
+      PYTHONUNBUFFERED: "1"
+      PIP_CACHE_DIR: /pip-cache
+    command: ["sh", "-ec", "pip install --no-cache-dir -q -r requirements.txt && exec python -m app.seed"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    restart: on-failure
+    volumes:
+      - ./:/app
+      - lolzin-pip-cache:/pip-cache
+    environment:
+      DATABASE_URL: postgresql+psycopg://lolzin:lolzin_dev_password@db:5432/lolzin
+      PYTHONUNBUFFERED: "1"
+      PIP_CACHE_DIR: /pip-cache
+      # Bind mounts on Linux often don't emit inotify events; force polling so
+      # uvicorn's reloader actually notices edits.
+      WATCHFILES_FORCE_POLLING: "1"
+    ports:
+      - "3000:8000"
+    command:
+      - sh
+      - -ec
+      - |
+        pip install --no-cache-dir -q -r requirements.txt
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      # Single process serves both the JSON API and the landing page — check both.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          for path in ("/health", "/"):
+              try:
+                  if urllib.request.urlopen(f"http://127.0.0.1:8000{path}", timeout=3).status != 200:
+                      print(f"unhealthy: {path}"); sys.exit(1)
+              except Exception as exc:
+                  print(f"unreachable: {path} ({exc})"); sys.exit(1)
+          sys.exit(0)
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 75s
+
+volumes:
+  lolzin-db-data:
+  lolzin-pip-cache:

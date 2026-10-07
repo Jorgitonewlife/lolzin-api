@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>lolzin-api</title>
+<style>
+  :root {
+    --bg: #010a13;
+    --panel: #0a1428;
+    --panel-2: #0f1e33;
+    --gold: #c8aa6e;
+    --gold-bright: #f0e6d2;
+    --teal: #0ac8b9;
+    --muted: #7a8ba3;
+    --line: #1e2f45;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 20% -10%, #0d2138 0%, var(--bg) 55%);
+    color: var(--gold-bright);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 72px; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 32px; }
+  .eyebrow {
+    color: var(--gold);
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    font-size: 11px;
+    margin: 0 0 10px;
+  }
+  h1 { margin: 0; font-size: 40px; letter-spacing: .04em; font-weight: 700; }
+  h1 span { color: var(--gold); }
+  .lede { color: var(--muted); margin: 12px 0 0; max-width: 62ch; line-height: 1.6; }
+  h2 {
+    font-size: 13px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--gold); margin: 40px 0 16px;
+  }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+  .card {
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .card .name { font-size: 17px; font-weight: 600; }
+  .card .title { color: var(--muted); font-size: 12px; font-style: italic; margin-top: 4px; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .tag {
+    display: inline-block; border: 1px solid var(--gold); color: var(--gold);
+    border-radius: 999px; padding: 2px 10px; font-size: 10px;
+    letter-spacing: .12em; text-transform: uppercase;
+  }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 14px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .bar { height: 6px; border-radius: 999px; background: var(--panel); overflow: hidden; margin-top: 12px; }
+  .bar > i { display: block; height: 100%; background: var(--teal); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+  td.num { font-variant-numeric: tabular-nums; color: var(--gold); }
+  .endpoints { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .endpoint {
+    border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+    background: var(--panel); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+  }
+  .endpoint b { color: var(--teal); font-weight: 600; }
+  .endpoint small { display: block; color: var(--muted); margin-top: 6px; font-family: inherit; }
+  a { color: var(--gold); }
+  .error { color: #e0605e; font-size: 14px; }
+  footer { margin-top: 48px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Runeterra Stats Service</p>
+    <h1>lolzin<span>-api</span></h1>
+    <p class="lede">
+      A small League of Legends stats API: champions, items and match history.
+      Interactive documentation lives at <a href="/docs">/docs</a>.
+    </p>
+  </header>
+
+  <h2>Champions</h2>
+  <div class="grid" id="champions"><div class="card">Loading champions…</div></div>
+
+  <h2>Role Performance</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Role</th><th>Champions</th><th>Matches</th><th>Wins</th><th>Win rate</th><th>Avg KDA</th></tr>
+      </thead>
+      <tbody id="stats"></tbody>
+    </table>
+  </div>
+
+  <h2>Endpoints</h2>
+  <div class="endpoints">
+    <div class="endpoint"><b>GET</b> /health<small>Service liveness probe</small></div>
+    <div class="endpoint"><b>GET</b> /api/champions<small>Filter with ?role=Mid</small></div>
+    <div class="endpoint"><b>GET</b> /api/champions/{id}<small>Single champion</small></div>
+    <div class="endpoint"><b>GET</b> /api/items<small>Filter with ?category=Crit</small></div>
+    <div class="endpoint"><b>GET</b> /api/matches<small>Filter with ?champion_id=1&amp;victory=true</small></div>
+    <div class="endpoint"><b>GET</b> /api/stats/roles<small>Win rate per role</small></div>
+  </div>
+
+  <footer>FastAPI · PostgreSQL · <a href="/docs">Swagger UI</a></footer>
+</div>
+
+<script>
+  const esc = (value) => String(value).replace(/[&<>"]/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
+  ));
+
+  async function load() {
+    try {
+      const [champions, stats] = await Promise.all([
+        fetch('/api/champions').then((r) => r.json()),
+        fetch('/api/stats/roles').then((r) => r.json()),
+      ]);
+
+      document.getElementById('champions').innerHTML = champions.map((c) => `
+        <div class="card">
+          <div class="row">
+            <div>
+              <div class="name">${esc(c.name)}</div>
+              <div class="title">${esc(c.title)}</div>
+            </div>
+            <span class="tag">${esc(c.role)}</span>
+          </div>
+          <div class="meta">
+            <span>${esc(c.region)}</span>
+            <span>Difficulty ${c.difficulty}/10</span>
+            <span>${c.release_year}</span>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('stats').innerHTML = stats.map((s) => `
+        <tr>
+          <td>${esc(s.role)}</td>
+          <td class="num">${s.champions}</td>
+          <td class="num">${s.matches}</td>
+          <td class="num">${s.wins}</td>
+          <td class="num">${s.win_rate}%</td>
+          <td class="num">${s.avg_kda}</td>
+        </tr>
+      `).join('');
+    } catch (error) {
+      document.getElementById('champions').innerHTML =
+        `<div class="card error">Could not reach the API: ${esc(error.message)}</div>`;
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
