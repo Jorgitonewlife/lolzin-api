@@ -22,6 +22,7 @@ from app.riot import (
 from app.schemas import (
     ChampionOut,
     ChampionPerformance,
+    ChampionTrend,
     ItemOut,
     ItemPerformance,
     MatchOut,
@@ -271,6 +272,69 @@ def performance_timeline(
         }
         for row in db.execute(stmt)
     ]
+
+
+@app.get(
+    "/api/stats/trends/champions",
+    response_model=list[ChampionTrend],
+    tags=["stats"],
+)
+def champion_win_rate_trends(
+    weeks: int = Query(8, ge=1, le=52, description="Only the last N weeks"),
+    limit: int = Query(5, ge=1, le=10, description="How many most-played champions"),
+    source: str | None = Query(None, description="demo or riot"),
+    db: Session = Depends(get_db),
+):
+    """Weekly win rate per champion for the most-played champions, oldest first."""
+    cutoff = _cutoff(days=weeks * 7)
+
+    played = select(Match.champion_id).where(Match.played_at >= cutoff)
+    if source:
+        played = played.where(Match.source == source)
+    top_ids = db.scalars(
+        played.group_by(Match.champion_id)
+        .order_by(func.count(Match.id).desc(), Match.champion_id)
+        .limit(limit)
+    ).all()
+    if not top_ids:
+        return []
+
+    period = func.date_trunc("week", Match.played_at)
+    games = func.count(Match.id)
+    wins = _wins()
+
+    stmt = (
+        select(
+            Match.champion_id,
+            Champion.name,
+            period.label("period"),
+            games.label("games"),
+            wins.label("wins"),
+        )
+        .join(Champion, Champion.id == Match.champion_id)
+        .where(Match.played_at >= cutoff, Match.champion_id.in_(top_ids))
+        .group_by(Match.champion_id, Champion.name, period)
+        .order_by(period)
+    )
+    if source:
+        stmt = stmt.where(Match.source == source)
+
+    series: dict[int, dict] = {}
+    for row in db.execute(stmt):
+        entry = series.setdefault(
+            row.champion_id,
+            {"champion_id": row.champion_id, "name": row.name, "games": 0, "points": []},
+        )
+        entry["games"] += row.games
+        entry["points"].append(
+            {
+                "period": row.period.date(),
+                "games": row.games,
+                "win_rate": _win_rate(row.wins, row.games),
+            }
+        )
+
+    return [series[champion_id] for champion_id in top_ids]
 
 
 @app.get("/api/stats/roles", tags=["stats"])

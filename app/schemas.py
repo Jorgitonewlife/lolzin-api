@@ -74,6 +74,19 @@ class TimelinePoint(BaseModel):
     avg_kda: float
 
 
+class TrendPoint(BaseModel):
+    period: date
+    games: int
+    win_rate: float
+
+
+class ChampionTrend(BaseModel):
+    champion_id: int
+    name: str
+    games: int
+    points: list[TrendPoint]
+
+
 class SyncResult(BaseModel):
     synced: int
     skipped: int

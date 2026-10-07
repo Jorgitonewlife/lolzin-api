@@ -110,6 +110,18 @@ td.loss { color: var(--red); }
 .bar { height: 8px; border-radius: 999px; background: var(--panel); overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--teal); }
 
+/* --- champion trend chart --- */
+.chart-hint { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
+.chart { display: block; width: 100%; height: auto; }
+.chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-axis { fill: var(--muted); font-size: 11px; }
+.chart-line { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { stroke: var(--panel); stroke-width: 2; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; }
+.legend-item { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+.legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.legend-meta { color: var(--muted); font-size: 12px; }
+
 /* --- endpoints --- */
 .endpoints { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .endpoint {

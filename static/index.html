@@ -84,6 +84,13 @@
     <div id="timeline"></div>
   </div>
 
+  <h2>Win Rate Trends · Top Champions</h2>
+  <div class="card">
+    <p class="chart-hint">Weekly win rate for your five most-played champions over the last 8 weeks.</p>
+    <div id="champion-trends"></div>
+    <div class="legend" id="champion-trends-legend"></div>
+  </div>
+
   <h2>Champions</h2>
   <div class="grid" id="champions"></div>
 
@@ -107,6 +114,7 @@
     <div class="endpoint"><b>GET</b> /api/stats/champions<small>Per-champion win rate</small></div>
     <div class="endpoint"><b>GET</b> /api/stats/items<small>Per-item win rate</small></div>
     <div class="endpoint"><b>GET</b> /api/stats/timeline<small>Weekly trend</small></div>
+    <div class="endpoint"><b>GET</b> /api/stats/trends/champions<small>Top-champion win rate trend</small></div>
     <div class="endpoint"><b>GET</b> /api/stats/roles<small>Win rate per role</small></div>
     <div class="endpoint"><b>POST</b> /api/sync/riot<small>Pull recent matches</small></div>
   </div>

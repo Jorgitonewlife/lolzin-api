@@ -10,8 +10,14 @@ const escapeHtml = (value) =>
 const orDash = (value) =>
   (value === null || value === undefined || value === '') ? '—' : escapeHtml(value);
 
-const shortDate = (iso) =>
-  new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+/* A plain YYYY-MM-DD is a calendar date; parse it as local so the label never
+   drifts a day backwards in negative-offset timezones. */
+const shortDate = (value) => {
+  const iso = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T00:00:00`
+    : value;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 async function getJSON(path) {
   const response = await fetch(path);
@@ -104,6 +110,69 @@ function renderTimeline(points) {
   `).join('');
 }
 
+/* Multi-series weekly win-rate chart for the most-played champions. */
+const TREND_COLORS = ['#c8aa6e', '#0ac8b9', '#4a9eff', '#e0605e', '#a06bff'];
+
+function renderChampionTrends(series) {
+  const host = $('#champion-trends');
+  const legend = $('#champion-trends-legend');
+  const drawn = (series || []).filter((s) => s.points.length);
+
+  if (!drawn.length) {
+    host.innerHTML = '<p class="empty">No matches in this window yet.</p>';
+    legend.innerHTML = '';
+    return;
+  }
+
+  const periods = [...new Set(drawn.flatMap((s) => s.points.map((p) => p.period)))].sort();
+  const W = 720;
+  const H = 240;
+  const pad = { top: 16, right: 18, bottom: 34, left: 48 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+  const xAt = (period) => periods.length === 1
+    ? pad.left + plotW / 2
+    : pad.left + (periods.indexOf(period) / (periods.length - 1)) * plotW;
+  const yAt = (rate) => pad.top + (1 - Math.min(100, Math.max(0, rate)) / 100) * plotH;
+  const colorAt = (index) => TREND_COLORS[index % TREND_COLORS.length];
+
+  const grid = [0, 25, 50, 75, 100].map((rate) => `
+    <line class="chart-grid" x1="${pad.left}" y1="${yAt(rate)}" x2="${W - pad.right}" y2="${yAt(rate)}"></line>
+    <text class="chart-axis" x="${pad.left - 10}" y="${yAt(rate) + 4}" text-anchor="end">${rate}%</text>
+  `).join('');
+
+  const xLabels = periods.map((period) => `
+    <text class="chart-axis" x="${xAt(period)}" y="${H - pad.bottom + 20}" text-anchor="middle">${shortDate(period)}</text>
+  `).join('');
+
+  const lines = drawn.map((s, index) => {
+    const color = colorAt(index);
+    const points = s.points.map((p) => `${xAt(p.period)},${yAt(p.win_rate)}`).join(' ');
+    const dots = s.points.map((p) => `
+      <circle class="chart-dot" cx="${xAt(p.period)}" cy="${yAt(p.win_rate)}" r="4" fill="${color}">
+        <title>${escapeHtml(s.name)} · ${shortDate(p.period)} · ${p.win_rate}% (${p.games} games)</title>
+      </circle>
+    `).join('');
+    return `<polyline class="chart-line" points="${points}" fill="none" stroke="${color}"></polyline>${dots}`;
+  }).join('');
+
+  host.innerHTML = `
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly win rate for the most-played champions">
+      ${grid}
+      ${xLabels}
+      ${lines}
+    </svg>
+  `;
+
+  legend.innerHTML = drawn.map((s, index) => `
+    <span class="legend-item">
+      <i class="legend-swatch" style="background:${colorAt(index)}"></i>
+      ${escapeHtml(s.name)}
+      <span class="legend-meta">${s.games} game${s.games === 1 ? '' : 's'}</span>
+    </span>
+  `).join('');
+}
+
 function renderChampions(champions) {
   $('#champions').innerHTML = champions.map((c) => `
     <div class="card">
@@ -159,14 +228,20 @@ async function loadAll() {
   const matchParams = new URLSearchParams({ limit: '15' });
   if (state.source) matchParams.set('source', state.source);
 
+  // Win-rate trend for the most-played champions over the last 8 weeks.
+  const trendParams = new URLSearchParams({ weeks: '8', limit: '5' });
+  if (state.source) trendParams.set('source', state.source);
+
   try {
-    const [champions, roles, matches, championPerf, itemPerf] = await Promise.all([
-      getJSON('/api/champions?limit=200'),
-      getJSON('/api/stats/roles'),
-      getJSON(`/api/matches?${matchParams}`),
-      getJSON(withSource('/api/stats/champions')),
-      getJSON(withSource('/api/stats/items')),
-    ]);
+    const [champions, roles, matches, championPerf, itemPerf, championTrends] =
+      await Promise.all([
+        getJSON('/api/champions?limit=200'),
+        getJSON('/api/stats/roles'),
+        getJSON(`/api/matches?${matchParams}`),
+        getJSON(withSource('/api/stats/champions')),
+        getJSON(withSource('/api/stats/items')),
+        getJSON(`/api/stats/trends/champions?${trendParams}`),
+      ]);
     if (generation !== loadGeneration) return;
 
     renderChampions(champions);
@@ -174,6 +249,7 @@ async function loadAll() {
     renderMatches(matches);
     renderChampionPerformance(championPerf);
     renderItemPerformance(itemPerf);
+    renderChampionTrends(championTrends);
     await loadTimeline();
   } catch (error) {
     if (generation !== loadGeneration) return;

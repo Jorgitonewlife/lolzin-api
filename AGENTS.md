@@ -81,6 +81,7 @@ curl -s "localhost:3000/api/matches?limit=5"          # history, newest first
 curl -s localhost:3000/api/stats/champions            # per-champion win rate
 curl -s localhost:3000/api/stats/items                # per-item win rate
 curl -s "localhost:3000/api/stats/timeline?champion_id=2"
+curl -s "localhost:3000/api/stats/trends/champions?weeks=8&limit=5"   # top-champion trend
 curl -s -X POST localhost:3000/api/sync/riot          # 503 until credentials exist
 ```
 
